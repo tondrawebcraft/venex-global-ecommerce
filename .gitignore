@@ -1,0 +1,14 @@
+node_modules/
+frontend/dist/
+backend/.env
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+uploads/*
+!uploads/.gitkeep
+
