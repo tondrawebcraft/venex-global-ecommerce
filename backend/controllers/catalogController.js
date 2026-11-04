@@ -94,6 +94,22 @@ export const deleteProduct = asyncHandler(async (req, res) => {
   ok(res, { message: 'Product archived.' });
 });
 
+export const restoreProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findOneAndUpdate(
+    { _id: req.params.id, isActive: false },
+    { $set: { isActive: true } },
+    { new: true, runValidators: true }
+  );
+  if (!product) throw new HttpError(404, 'Archived product not found.');
+  ok(res, { product });
+});
+
+export const permanentlyDeleteProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findByIdAndDelete(req.params.id);
+  if (!product) throw new HttpError(404, 'Product not found.');
+  ok(res, { message: 'Product permanently deleted.' });
+});
+
 export const createCategory = asyncHandler(async (req, res) => {
   const category = await Category.create({ ...req.body, slug: slugify(req.body.slug || req.body.name) });
   ok(res.status(201), { category });
@@ -111,6 +127,24 @@ export const deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
   if (!category) throw new HttpError(404, 'Category not found.');
   ok(res, { message: 'Category archived.' });
+});
+
+export const permanentlyDeleteCategory = asyncHandler(async (req, res) => {
+  const hasProducts = await Product.exists({ category: req.params.id });
+  if (hasProducts) throw new HttpError(409, 'This collection still has products. Move or permanently delete its products before deleting the collection.');
+  const category = await Category.findByIdAndDelete(req.params.id);
+  if (!category) throw new HttpError(404, 'Collection not found.');
+  ok(res, { message: 'Collection permanently deleted.' });
+});
+
+export const restoreCategory = asyncHandler(async (req, res) => {
+  const category = await Category.findOneAndUpdate(
+    { _id: req.params.id, isActive: false },
+    { $set: { isActive: true } },
+    { new: true, runValidators: true }
+  );
+  if (!category) throw new HttpError(404, 'Archived collection not found.');
+  ok(res, { category });
 });
 
 export const addReview = asyncHandler(async (req, res) => {

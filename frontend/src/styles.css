@@ -481,10 +481,20 @@ img { display: block; max-width: 100%; }
 .admin-product-cell { display: flex; align-items: center; gap: 8px; }
 .admin-product-cell img { width: 31px; height: 36px; object-fit: cover; background: #eeeee7; }
 .admin-product-cell strong { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.admin-product-name { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.admin-product-name small.cell-subline { margin-top: 0; }
 .admin-button { min-height: 33px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; color: white; border: 1px solid #354b38; background: #354b38; font-size: 8px; }
 .admin-button:hover { background: #476149; }
 .admin-button:disabled { opacity: .55; }
 .table-action { padding: 5px 0; color: #8d6855; border: 0; border-bottom: 1px solid #d7c6ba; background: transparent; font-size: 8px; }
+.table-action:disabled { opacity: .55; }
+.admin-item-actions { display: flex; align-items: center; gap: 10px; }
+.admin-delete-overlay { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 20px; background: #17201880; }
+.admin-delete-dialog { width: min(100%, 360px); padding: 18px; border: 1px solid #e2e5de; background: white; box-shadow: 0 10px 30px #101a1230; }
+.admin-delete-dialog h2 { margin: 0 0 10px; color: #364236; font-family: var(--serif); font-size: 17px; font-weight: 500; }
+.admin-delete-dialog p { margin: 0; color: #737b70; font-size: 9px; line-height: 1.6; }
+.admin-delete-dialog p strong { color: #4a5548; }
+.admin-delete-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-top: 20px; }
 .admin-form-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; padding: 16px; border: 1px solid #e9ebe5; background: #f8f9f6; }
 .admin-form-grid > label, .admin-form-stack > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: #727a6f; font-size: 8px; font-weight: 600; }
 .admin-form-grid input, .admin-form-grid textarea, .admin-form-grid select, .admin-form-stack input, .admin-form-stack textarea, .admin-form-stack select { min-width: 0; width: 100%; min-height: 35px; padding: 7px 9px; color: #384337; border: 1px solid #dfe3db; outline: 0; background: white; font-size: 9px; }

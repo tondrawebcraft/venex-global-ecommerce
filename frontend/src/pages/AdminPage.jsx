@@ -3,6 +3,7 @@ import { Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { Activity, ArrowRight, ArrowUpRight, Boxes, ChevronDown, ChevronRight, CircleDollarSign, FileBarChart2, FolderKanban, HeartHandshake, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Search, Settings2, ShieldCheck, ShoppingBag, Tag, Users, X } from 'lucide-react';
 import api, { errorMessage, unwrap } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
 import { Brand } from '../components/Brand';
 import { money } from '../components/ProductCard';
 
@@ -74,9 +75,33 @@ function SalesChart({ rows }) {
   return <div className="sales-chart">{points.length ? points.map((point) => <div className="chart-bar-wrap" key={point._id} title={`${point._id}: ${money(point.revenue)}`}><div className="chart-bar" style={{ height: `${Math.max(7, (point.revenue / max) * 100)}%` }} /><span>{new Date(`${point._id}T00:00:00`).getDate()}</span></div>) : <p>No sales activity in the last 30 days.</p>}</div>;
 }
 
+function CatalogActions({ item, isActive, disabled, onEdit, onVisibilityChange, onDelete }) {
+  return <div className="admin-item-actions">
+    <button type="button" className="table-action" disabled={disabled} onClick={() => onEdit(item)}>Edit</button>
+    <button type="button" className="table-action" disabled={disabled} onClick={() => onVisibilityChange(item, !isActive)}>{isActive ? 'Archive' : 'Restore'}</button>
+    <button type="button" className="table-action" disabled={disabled} onClick={() => onDelete(item)}>Delete</button>
+  </div>;
+}
+
+function DeleteConfirmationModal({ item, itemType, busy, onCancel, onConfirm }) {
+  if (!item) return null;
+  return <div className="admin-delete-overlay">
+    <section className="admin-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="admin-delete-title" aria-describedby="admin-delete-message" onKeyDown={(event) => event.key === 'Escape' && !busy && onCancel()}>
+      <h2 id="admin-delete-title">Permanently delete this {itemType}?</h2>
+      <p id="admin-delete-message"><strong>{item.name}</strong> will be permanently deleted. This cannot be undone.</p>
+      <div className="admin-delete-actions">
+        <button type="button" className="table-action" autoFocus disabled={busy} onClick={onCancel}>Cancel</button>
+        <button type="button" className="table-action" disabled={busy} onClick={onConfirm}>{busy ? 'Deleting…' : 'Permanently Delete'}</button>
+      </div>
+    </section>
+  </div>;
+}
+
 function Products() {
   const { data, loading, error, refresh } = useData('/admin/products');
+  const { notify } = useStore();
   const [categories, setCategories] = useState([]); const [formOpen, setFormOpen] = useState(false); const [editingId, setEditingId] = useState(null); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+  const [activeOverrides, setActiveOverrides] = useState({}); const [deletedIds, setDeletedIds] = useState(() => new Set()); const [savingProductId, setSavingProductId] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deletingProductId, setDeletingProductId] = useState(null);
   const blank = { name: '', description: '', shortDescription: '', sku: '', category: '', price: '', compareAtPrice: '', stock: '', images: '', sizes: '', colors: '', featured: false, newArrival: false, bestSeller: false };
   const [form, setForm] = useState(blank);
   useEffect(() => { unwrap(api.get('/admin/categories')).then((r) => setCategories(r.categories)).catch(() => {}); }, []);
@@ -95,15 +120,89 @@ function Products() {
     try { const body = new FormData(); body.append('image', file); const result = await unwrap(api.post('/admin/upload', body)); setForm((current) => ({ ...current, images: [current.images, result.url].filter(Boolean).join(', ') })); setMessage('Image uploaded. Save the product to keep the change.'); }
     catch (e) { setMessage(errorMessage(e)); }
   };
-  const archive = async (id) => { if (!window.confirm('Archive this product from the storefront?')) return; try { await unwrap(api.delete(`/admin/products/${id}`)); await refresh(); } catch (e) { setMessage(errorMessage(e)); } };
-  return <section className="admin-card"><CardHead title="Your collection" hint={`${data?.pagination?.total || 0} products in the catalog`} action={<button className="admin-button" onClick={() => formOpen ? closeForm() : setFormOpen(true)}>{formOpen ? <X size={15} /> : <Plus size={15} />}{formOpen ? 'Close form' : 'Add a product'}</button>} />{formOpen && <form className="admin-form-grid" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label><label>Collection<select required value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">Choose a collection</option>{categories.map((c) => <option value={c._id} key={c._id}>{c.name}</option>)}</select></label><label>Price (৳)<input required min="0" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label><label>Compare at (৳)<input min="0" type="number" value={form.compareAtPrice} onChange={(e) => setForm({ ...form, compareAtPrice: e.target.value })} /></label><label>Stock<input required min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} /></label><label className="admin-form-wide">Short description<input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} /></label><label className="admin-form-wide">Description<textarea required minLength="10" rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label className="admin-form-wide">Image paths, comma separated<input placeholder="/images/weekender.jpg" value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} /></label><label className="admin-form-wide">Upload product image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={uploadImage} /></label><label>Sizes, comma separated<input placeholder="S, M, L" value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} /></label><label>Colors, comma separated<input placeholder="Sand, Olive" value={form.colors} onChange={(e) => setForm({ ...form, colors: e.target.value })} /></label><div className="admin-form-wide flag-row">{[['featured','Featured'],['newArrival','New arrival'],['bestSeller','Best seller']].map(([key,label]) => <label key={key}><input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>{message && <p className="admin-form-wide admin-form-note">{message}</p>}<button className="admin-button admin-form-wide" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Update product' : 'Save product'}</button></form>}<TableState loading={loading} error={error} empty={!data?.products?.length && 'No products have been added yet.'}><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Piece</th><th>Collection</th><th>SKU</th><th>Price</th><th>Stock</th><th>Flags</th><th>Actions</th></tr></thead><tbody>{data?.products?.map((product) => <tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0] || '/images/weekender.jpg'} alt="" /><strong>{product.name}</strong></div></td><td>{product.category?.name}</td><td>{product.sku}</td><td>{money(product.price)}</td><td><b className={product.stock <= 5 ? 'stock-critical' : ''}>{product.stock}</b></td><td>{product.featured ? 'Featured' : product.newArrival ? 'New' : '—'}</td><td><button className="table-action" onClick={() => startEdit(product)}>Edit</button><button className="table-action action-spaced" onClick={() => archive(product._id)}>Archive</button></td></tr>)}</tbody></table></div></TableState></section>;
+  const setProductVisibility = async (product, shouldBeActive) => {
+    if (!shouldBeActive && !window.confirm(`Archive ${product.name}?`)) return;
+    setSavingProductId(product._id);
+    try {
+      if (shouldBeActive) await unwrap(api.patch(`/admin/products/${product._id}/restore`));
+      else await unwrap(api.delete(`/admin/products/${product._id}`));
+      setActiveOverrides((current) => ({ ...current, [product._id]: shouldBeActive }));
+      const refreshed = await refresh().then(() => true).catch(() => false);
+      if (refreshed) {
+        setActiveOverrides((current) => { const next = { ...current }; delete next[product._id]; return next; });
+        notify(`${product.name} ${shouldBeActive ? 'restored and active' : 'archived'}.`);
+      } else {
+        notify(`${product.name} was ${shouldBeActive ? 'restored' : 'archived'}, but the list could not refresh.`, 'error');
+      }
+    } catch (e) {
+      notify(errorMessage(e), 'error');
+    } finally {
+      setSavingProductId(null);
+    }
+  };
+  const permanentlyDelete = async () => {
+    const product = deleteTarget;
+    if (!product) return;
+    setDeletingProductId(product._id);
+    try {
+      await unwrap(api.delete(`/admin/products/${product._id}/permanent`));
+      setDeleteTarget(null);
+      setDeletedIds((current) => new Set(current).add(product._id));
+      const refreshed = await refresh().then(() => true).catch(() => false);
+      notify(refreshed ? `${product.name} permanently deleted.` : `${product.name} was deleted, but the list could not refresh.`, refreshed ? 'success' : 'error');
+    } catch (e) {
+      notify(errorMessage(e), 'error');
+    } finally {
+      setDeletingProductId(null);
+    }
+  };
+  const products = (data?.products || []).filter((product) => !deletedIds.has(product._id));
+  return <section className="admin-card"><CardHead title="Your collection" hint={`${data?.pagination?.total || 0} products in the catalog`} action={<button className="admin-button" onClick={() => formOpen ? closeForm() : setFormOpen(true)}>{formOpen ? <X size={15} /> : <Plus size={15} />}{formOpen ? 'Close form' : 'Add a product'}</button>} />{formOpen && <form className="admin-form-grid" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label><label>Collection<select required value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">Choose a collection</option>{categories.map((c) => <option value={c._id} key={c._id}>{c.name}</option>)}</select></label><label>Price (৳)<input required min="0" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label><label>Compare at (৳)<input min="0" type="number" value={form.compareAtPrice} onChange={(e) => setForm({ ...form, compareAtPrice: e.target.value })} /></label><label>Stock<input required min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} /></label><label className="admin-form-wide">Short description<input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} /></label><label className="admin-form-wide">Description<textarea required minLength="10" rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label className="admin-form-wide">Image paths, comma separated<input placeholder="/images/weekender.jpg" value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} /></label><label className="admin-form-wide">Upload product image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={uploadImage} /></label><label>Sizes, comma separated<input placeholder="S, M, L" value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} /></label><label>Colors, comma separated<input placeholder="Sand, Olive" value={form.colors} onChange={(e) => setForm({ ...form, colors: e.target.value })} /></label><div className="admin-form-wide flag-row">{[['featured','Featured'],['newArrival','New arrival'],['bestSeller','Best seller']].map(([key,label]) => <label key={key}><input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>{message && <p className="admin-form-wide admin-form-note">{message}</p>}<button className="admin-button admin-form-wide" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Update product' : 'Save product'}</button></form>}<TableState loading={loading} error={error} empty={!products.length && 'No products have been added yet.'}><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Piece</th><th>Collection</th><th>SKU</th><th>Price</th><th>Stock</th><th>Flags</th><th>Actions</th></tr></thead><tbody>{products.map((product) => { const isActive = activeOverrides[product._id] ?? product.isActive; return <tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0] || '/images/weekender.jpg'} alt="" /><span className="admin-product-name"><strong>{product.name}</strong><small className="cell-subline">{isActive ? 'Active' : 'Archived'}</small></span></div></td><td>{product.category?.name}</td><td>{product.sku}</td><td>{money(product.price)}</td><td><b className={product.stock <= 5 ? 'stock-critical' : ''}>{product.stock}</b></td><td>{product.featured ? 'Featured' : product.newArrival ? 'New' : '—'}</td><td><CatalogActions item={product} isActive={isActive} disabled={savingProductId === product._id || deletingProductId === product._id} onEdit={startEdit} onVisibilityChange={setProductVisibility} onDelete={setDeleteTarget} /></td></tr>; })}</tbody></table></div></TableState><DeleteConfirmationModal item={deleteTarget} itemType="product" busy={Boolean(deletingProductId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} /></section>;
 }
 
 function Categories() {
   const { data, loading, error, refresh } = useData('/admin/categories'); const [form, setForm] = useState({ name: '', description: '', image: '' }); const [editingId, setEditingId] = useState(null); const [message, setMessage] = useState('');
+  const { notify, refreshCategories } = useStore(); const [activeOverrides, setActiveOverrides] = useState({}); const [deletedIds, setDeletedIds] = useState(() => new Set()); const [savingCategoryId, setSavingCategoryId] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deletingCategoryId, setDeletingCategoryId] = useState(null);
   const submit = async (event) => { event.preventDefault(); try { if (editingId) await unwrap(api.patch(`/admin/categories/${editingId}`, form)); else await unwrap(api.post('/admin/categories', form)); setForm({ name: '', description: '', image: '' }); setEditingId(null); setMessage(editingId ? 'Collection updated.' : 'Collection created.'); await refresh(); } catch (e) { setMessage(errorMessage(e)); } };
-  const archive = async (category) => { if (!window.confirm(`Archive ${category.name}?`)) return; try { await unwrap(api.delete(`/admin/categories/${category._id}`)); await refresh(); } catch (e) { setMessage(errorMessage(e)); } };
-  return <div className="admin-two-column"><section className="admin-card"><CardHead title="Store collections" hint="Each collection has a dedicated storefront page." /><TableState loading={loading} error={error} empty={!data?.categories?.length && 'No collections yet.'}><div className="admin-collection-list">{data?.categories?.map((category) => <div key={category._id}><img src={category.image || '/images/weekender.jpg'} alt="" /><span><strong>{category.name}</strong><small>/{category.slug} · {category.isActive ? 'Visible' : 'Archived'}</small></span><button className="table-action" onClick={() => { setForm({ name: category.name, description: category.description || '', image: category.image || '' }); setEditingId(category._id); }}>Edit</button><button className="table-action" onClick={() => archive(category)}>Archive</button><Link to={`/category/${category.slug}`} target="_blank" rel="noreferrer"><ArrowUpRight size={16} /></Link></div>)}</div></TableState></section><section className="admin-card"><CardHead title={editingId ? 'Edit a collection' : 'Add a collection'} hint="Keep names clear and easy to browse." />{editingId && <button className="table-action" onClick={() => { setEditingId(null); setForm({ name: '', description: '', image: '' }); }}>Cancel edit</button>}<form className="admin-form-stack" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>Description<textarea rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Image path<input placeholder="/images/weekender.jpg" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} /></label>{message && <p className="admin-form-note">{message}</p>}<button className="admin-button">{editingId ? 'Update collection' : 'Create collection'}</button></form></section></div>;
+  const setCollectionVisibility = async (category, shouldBeActive) => {
+    if (!shouldBeActive && !window.confirm(`Archive ${category.name}?`)) return;
+    setSavingCategoryId(category._id);
+    try {
+      if (shouldBeActive) await unwrap(api.patch(`/admin/categories/${category._id}/restore`));
+      else await unwrap(api.delete(`/admin/categories/${category._id}`));
+      setActiveOverrides((current) => ({ ...current, [category._id]: shouldBeActive }));
+      const refreshResults = await Promise.allSettled([refresh(), refreshCategories()]);
+      if (refreshResults.some((result) => result.status === 'rejected')) {
+        notify(`${category.name} was ${shouldBeActive ? 'restored' : 'archived'}, but the list could not refresh.`, 'error');
+      } else {
+        setActiveOverrides((current) => { const next = { ...current }; delete next[category._id]; return next; });
+        notify(`${category.name} ${shouldBeActive ? 'restored and visible' : 'archived'}.`);
+      }
+    } catch (e) {
+      notify(errorMessage(e), 'error');
+    } finally {
+      setSavingCategoryId(null);
+    }
+  };
+  const permanentlyDelete = async () => {
+    const category = deleteTarget;
+    if (!category) return;
+    setDeletingCategoryId(category._id);
+    try {
+      await unwrap(api.delete(`/admin/categories/${category._id}/permanent`));
+      setDeleteTarget(null);
+      setDeletedIds((current) => new Set(current).add(category._id));
+      const refreshResults = await Promise.allSettled([refresh(), refreshCategories()]);
+      const refreshed = refreshResults.every((result) => result.status === 'fulfilled');
+      notify(refreshed ? `${category.name} permanently deleted.` : `${category.name} was deleted, but a collection list could not refresh.`, refreshed ? 'success' : 'error');
+    } catch (e) {
+      notify(errorMessage(e), 'error');
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  };
+  const collections = (data?.categories || []).filter((category) => !deletedIds.has(category._id));
+  return <div className="admin-two-column"><section className="admin-card"><CardHead title="Store collections" hint="Each collection has a dedicated storefront page." /><TableState loading={loading} error={error} empty={!collections.length && 'No collections yet.'}><div className="admin-collection-list">{collections.map((category) => { const isActive = activeOverrides[category._id] ?? category.isActive; return <div key={category._id}><img src={category.image || '/images/weekender.jpg'} alt="" /><span><strong>{category.name}</strong><small>/{category.slug} · {isActive ? 'Visible' : 'Archived'}</small></span><CatalogActions item={category} isActive={isActive} disabled={savingCategoryId === category._id || deletingCategoryId === category._id} onEdit={(item) => { setForm({ name: item.name, description: item.description || '', image: item.image || '' }); setEditingId(item._id); }} onVisibilityChange={setCollectionVisibility} onDelete={setDeleteTarget} /><Link to={`/category/${category.slug}`} target="_blank" rel="noreferrer"><ArrowUpRight size={16} /></Link></div>; })}</div></TableState></section><section className="admin-card"><CardHead title={editingId ? 'Edit a collection' : 'Add a collection'} hint="Keep names clear and easy to browse." />{editingId && <button className="table-action" onClick={() => { setEditingId(null); setForm({ name: '', description: '', image: '' }); }}>Cancel edit</button>}<form className="admin-form-stack" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>Description<textarea rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Image path<input placeholder="/images/weekender.jpg" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} /></label>{message && <p className="admin-form-note">{message}</p>}<button className="admin-button">{editingId ? 'Update collection' : 'Create collection'}</button></form><DeleteConfirmationModal item={deleteTarget} itemType="collection" busy={Boolean(deletingCategoryId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} /></section></div>;
 }
 
 function Orders() {

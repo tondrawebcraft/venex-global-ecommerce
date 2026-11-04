@@ -25,6 +25,8 @@ router.get('/products', asyncHandler(async (req, res) => {
 }));
 router.post('/products', body('name').trim().isLength({ min: 2, max: 180 }), body('description').trim().isLength({ min: 10 }), body('price').isFloat({ min: 0 }), body('stock').isInt({ min: 0 }), body('category').isMongoId(), body('sku').trim().isLength({ min: 2, max: 50 }), catalog.createProduct);
 router.patch('/products/:id', body('price').optional().isFloat({ min: 0 }), body('stock').optional().isInt({ min: 0 }), catalog.updateProduct);
+router.patch('/products/:id/restore', catalog.restoreProduct);
+router.delete('/products/:id/permanent', catalog.permanentlyDeleteProduct);
 router.delete('/products/:id', catalog.deleteProduct);
 router.post('/upload', upload.single('image'), asyncHandler(async (req, res) => {
   if (!req.file) throw new HttpError(400, 'Choose an image to upload.');
@@ -47,7 +49,9 @@ router.post('/upload', upload.single('image'), asyncHandler(async (req, res) => 
 }));
 router.get('/categories', asyncHandler(async (_req, res) => { ok(res, { categories: await Category.find().sort({ order: 1 }).lean() }); }));
 router.post('/categories', body('name').trim().isLength({ min: 2, max: 80 }), catalog.createCategory);
+router.patch('/categories/:id/restore', catalog.restoreCategory);
 router.patch('/categories/:id', catalog.updateCategory);
+router.delete('/categories/:id/permanent', catalog.permanentlyDeleteCategory);
 router.delete('/categories/:id', catalog.deleteCategory);
 router.get('/orders', admin.adminOrders);
 router.patch('/orders/:id', admin.adminUpdateOrder);
