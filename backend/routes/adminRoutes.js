@@ -14,7 +14,8 @@ import { protect, adminOnly } from '../middleware/auth.js';
 import { HttpError, asyncHandler, ok } from '../utils/http.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_SIZE, files: 1 } });
 router.use(protect, adminOnly);
 router.get('/dashboard', admin.dashboard);
 router.get('/products', asyncHandler(async (req, res) => {
@@ -28,25 +29,42 @@ router.patch('/products/:id', body('price').optional().isFloat({ min: 0 }), body
 router.patch('/products/:id/restore', catalog.restoreProduct);
 router.delete('/products/:id/permanent', catalog.permanentlyDeleteProduct);
 router.delete('/products/:id', catalog.deleteProduct);
-router.post('/upload', upload.single('image'), asyncHandler(async (req, res) => {
-  if (!req.file) throw new HttpError(400, 'Choose an image to upload.');
-  const type = await fileTypeFromBuffer(req.file.buffer);
-  if (!type || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(type.mime)) throw new HttpError(400, 'Use a JPEG, PNG, WebP or AVIF image.');
-  if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
-    cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME, api_key: process.env.CLOUDINARY_API_KEY, api_secret: process.env.CLOUDINARY_API_SECRET, secure: true });
-    const result = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream({ folder: 'venex/products', resource_type: 'image', allowed_formats: ['jpg', 'png', 'webp', 'avif'] }, (error, value) => error ? reject(error) : resolve(value));
-      stream.end(req.file.buffer);
-    });
-    return ok(res.status(201), { url: result.secure_url, storage: 'cloudinary' });
-  }
-  const filename = `${crypto.randomUUID()}.${type.ext}`;
-  const folder = path.resolve('uploads');
-  await fs.mkdir(folder, { recursive: true });
-  await fs.writeFile(path.join(folder, filename), req.file.buffer, { flag: 'wx' });
-  const apiOrigin = (process.env.API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
-  ok(res.status(201), { url: `${apiOrigin}/uploads/${filename}`, storage: 'local' });
-}));
+function receiveImage(req, res, next) {
+  upload.single('image')(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError) {
+      const tooLarge = error.code === 'LIMIT_FILE_SIZE';
+      return next(new HttpError(tooLarge ? 413 : 400, tooLarge ? 'Images must be 5 MB or smaller.' : 'Upload one image at a time.'));
+    }
+    next(error);
+  });
+}
+
+function uploadImage(folderName) {
+  return asyncHandler(async (req, res) => {
+    if (!req.file) throw new HttpError(400, 'Choose an image to upload.');
+    const type = await fileTypeFromBuffer(req.file.buffer);
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', ...(folderName === 'products' ? ['image/avif'] : [])];
+    if (!type || !allowedMimes.includes(type.mime)) throw new HttpError(400, folderName === 'products' ? 'Use a JPG, JPEG, PNG, WEBP or AVIF image.' : 'Use a JPG, JPEG, PNG or WEBP image.');
+    if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+      cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME, api_key: process.env.CLOUDINARY_API_KEY, api_secret: process.env.CLOUDINARY_API_SECRET, secure: true });
+      const result = await new Promise((resolve, reject) => {
+        const allowedFormats = ['jpg', 'jpeg', 'png', 'webp', ...(folderName === 'products' ? ['avif'] : [])];
+        const stream = cloudinary.uploader.upload_stream({ folder: `venex/${folderName}`, resource_type: 'image', allowed_formats: allowedFormats }, (error, value) => error ? reject(error) : resolve(value));
+        stream.end(req.file.buffer);
+      });
+      return ok(res.status(201), { url: result.secure_url, storage: 'cloudinary' });
+    }
+    const filename = `${crypto.randomUUID()}.${type.ext}`;
+    const folder = path.resolve('uploads');
+    await fs.mkdir(folder, { recursive: true });
+    await fs.writeFile(path.join(folder, filename), req.file.buffer, { flag: 'wx' });
+    const apiOrigin = (process.env.API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '').replace(/\/$/, '');
+    ok(res.status(201), { url: `${apiOrigin}/uploads/${filename}`, storage: 'local' });
+  });
+}
+router.post('/upload', receiveImage, uploadImage('products'));
+router.post('/upload/collections', receiveImage, uploadImage('collections'));
 router.get('/categories', asyncHandler(async (_req, res) => { ok(res, { categories: await Category.find().sort({ order: 1 }).lean() }); }));
 router.post('/categories', body('name').trim().isLength({ min: 2, max: 80 }), catalog.createCategory);
 router.patch('/categories/:id/restore', catalog.restoreCategory);

@@ -12,6 +12,19 @@ function validate(req) {
 }
 const slugify = (value) => String(value || '').toLowerCase().trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const bool = (value) => value === true || value === 'true';
+function validImageReference(value) {
+  if (typeof value !== 'string') return false;
+  const image = value.trim();
+  if (!image) return true;
+  if (/^(?:blob:|data:|file:)/i.test(image) || /^[a-z]:[\\/]/i.test(image) || /^\\\\/.test(image) || image.includes('\\')) return false;
+  if (image.startsWith('/')) return !image.startsWith('//');
+  try { return ['http:', 'https:'].includes(new URL(image).protocol); }
+  catch { return false; }
+}
+function validateImageReferences(value) {
+  const images = Array.isArray(value) ? value : [value];
+  if (images.some((image) => !validImageReference(image))) throw new HttpError(400, 'Use uploaded image URLs or public site image paths.');
+}
 
 export const listProducts = asyncHandler(async (req, res) => {
   const { q, category, sort = 'featured', minPrice, maxPrice } = req.query;
@@ -74,6 +87,7 @@ export const getCategory = asyncHandler(async (req, res) => {
 
 export const createProduct = asyncHandler(async (req, res) => {
   validate(req);
+  if (req.body.images !== undefined) validateImageReferences(req.body.images);
   const input = { ...req.body, slug: slugify(req.body.slug || req.body.name) };
   const product = await Product.create(input);
   ok(res.status(201), { product });
@@ -82,6 +96,7 @@ export const createProduct = asyncHandler(async (req, res) => {
 export const updateProduct = asyncHandler(async (req, res) => {
   validate(req);
   const updates = { ...req.body };
+  if (updates.images !== undefined) validateImageReferences(updates.images);
   if (updates.name && !updates.slug) updates.slug = slugify(updates.name);
   const product = await Product.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!product) throw new HttpError(404, 'Product not found.');
@@ -111,12 +126,18 @@ export const permanentlyDeleteProduct = asyncHandler(async (req, res) => {
 });
 
 export const createCategory = asyncHandler(async (req, res) => {
+  if (typeof req.body.image !== 'string' || !req.body.image.trim()) throw new HttpError(400, 'Choose a cover image for this collection.');
+  validateImageReferences(req.body.image);
   const category = await Category.create({ ...req.body, slug: slugify(req.body.slug || req.body.name) });
   ok(res.status(201), { category });
 });
 
 export const updateCategory = asyncHandler(async (req, res) => {
   const updates = { ...req.body };
+  if (updates.image !== undefined) {
+    if (typeof updates.image !== 'string' || !updates.image.trim()) throw new HttpError(400, 'Choose a cover image for this collection.');
+    validateImageReferences(updates.image);
+  }
   if (updates.name && !updates.slug) updates.slug = slugify(updates.name);
   const category = await Category.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!category) throw new HttpError(404, 'Category not found.');

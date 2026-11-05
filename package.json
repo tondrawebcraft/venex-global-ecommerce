@@ -11,7 +11,7 @@
     "build": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
     "seed": "npm run seed --prefix backend",
-    "test": "npm run test --prefix backend",
+    "test": "npm run test --prefix backend && npm run test --prefix frontend",
     "smoke": "npm run smoke --prefix backend",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

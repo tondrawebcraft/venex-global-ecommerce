@@ -4,6 +4,7 @@ import { Activity, ArrowRight, ArrowUpRight, Boxes, ChevronDown, ChevronRight, C
 import api, { errorMessage, unwrap } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
+import AdminImageUpload from '../components/AdminImageUpload';
 import { Brand } from '../components/Brand';
 import { money } from '../components/ProductCard';
 
@@ -100,25 +101,20 @@ function DeleteConfirmationModal({ item, itemType, busy, onCancel, onConfirm }) 
 function Products() {
   const { data, loading, error, refresh } = useData('/admin/products');
   const { notify } = useStore();
-  const [categories, setCategories] = useState([]); const [formOpen, setFormOpen] = useState(false); const [editingId, setEditingId] = useState(null); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+  const [categories, setCategories] = useState([]); const [formOpen, setFormOpen] = useState(false); const [editingId, setEditingId] = useState(null); const [busy, setBusy] = useState(false); const [imagesBusy, setImagesBusy] = useState(false); const [message, setMessage] = useState('');
   const [activeOverrides, setActiveOverrides] = useState({}); const [deletedIds, setDeletedIds] = useState(() => new Set()); const [savingProductId, setSavingProductId] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deletingProductId, setDeletingProductId] = useState(null);
-  const blank = { name: '', description: '', shortDescription: '', sku: '', category: '', price: '', compareAtPrice: '', stock: '', images: '', sizes: '', colors: '', featured: false, newArrival: false, bestSeller: false };
+  const blank = { name: '', description: '', shortDescription: '', sku: '', category: '', price: '', compareAtPrice: '', stock: '', images: [], sizes: '', colors: '', featured: false, newArrival: false, bestSeller: false };
   const [form, setForm] = useState(blank);
   useEffect(() => { unwrap(api.get('/admin/categories')).then((r) => setCategories(r.categories)).catch(() => {}); }, []);
   const startEdit = (product) => {
-    setEditingId(product._id); setForm({ name: product.name, description: product.description, shortDescription: product.shortDescription || '', sku: product.sku, category: product.category?._id || '', price: product.price, compareAtPrice: product.compareAtPrice || '', stock: product.stock, images: (product.images || []).join(', '), sizes: (product.sizes || []).map((v) => v.value).join(', '), colors: (product.colors || []).map((v) => v.value).join(', '), featured: product.featured, newArrival: product.newArrival, bestSeller: product.bestSeller }); setFormOpen(true); setMessage('');
+    setEditingId(product._id); setForm({ name: product.name, description: product.description, shortDescription: product.shortDescription || '', sku: product.sku, category: product.category?._id || '', price: product.price, compareAtPrice: product.compareAtPrice || '', stock: product.stock, images: product.images || [], sizes: (product.sizes || []).map((v) => v.value).join(', '), colors: (product.colors || []).map((v) => v.value).join(', '), featured: product.featured, newArrival: product.newArrival, bestSeller: product.bestSeller }); setFormOpen(true); setMessage('');
   };
-  const closeForm = () => { setForm(blank); setEditingId(null); setFormOpen(false); setMessage(''); };
+  const closeForm = () => { if (imagesBusy) return; setForm(blank); setEditingId(null); setFormOpen(false); setMessage(''); };
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setMessage('');
+    event.preventDefault(); if (imagesBusy) return; setBusy(true); setMessage('');
     const quantity = Number(form.stock);
-    const payload = { ...form, price: Number(form.price), compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined, stock: quantity, images: form.images.split(',').map((x) => x.trim()).filter(Boolean), sizes: form.sizes.split(',').map((x) => x.trim()).filter(Boolean).map((value) => ({ value, stock: quantity })), colors: form.colors.split(',').map((x) => x.trim()).filter(Boolean).map((value) => ({ value, stock: quantity })) };
+    const payload = { ...form, price: Number(form.price), compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined, stock: quantity, images: [...form.images], sizes: form.sizes.split(',').map((x) => x.trim()).filter(Boolean).map((value) => ({ value, stock: quantity })), colors: form.colors.split(',').map((x) => x.trim()).filter(Boolean).map((value) => ({ value, stock: quantity })) };
     try { if (editingId) await unwrap(api.patch(`/admin/products/${editingId}`, payload)); else await unwrap(api.post('/admin/products', payload)); setMessage(editingId ? 'Product updated.' : 'Product added to the catalog.'); closeForm(); await refresh(); } catch (e) { setMessage(errorMessage(e)); } finally { setBusy(false); }
-  };
-  const uploadImage = async (event) => {
-    const file = event.target.files?.[0]; if (!file) return; setMessage('Uploading image…');
-    try { const body = new FormData(); body.append('image', file); const result = await unwrap(api.post('/admin/upload', body)); setForm((current) => ({ ...current, images: [current.images, result.url].filter(Boolean).join(', ') })); setMessage('Image uploaded. Save the product to keep the change.'); }
-    catch (e) { setMessage(errorMessage(e)); }
   };
   const setProductVisibility = async (product, shouldBeActive) => {
     if (!shouldBeActive && !window.confirm(`Archive ${product.name}?`)) return;
@@ -157,26 +153,60 @@ function Products() {
     }
   };
   const products = (data?.products || []).filter((product) => !deletedIds.has(product._id));
-  return <section className="admin-card"><CardHead title="Your collection" hint={`${data?.pagination?.total || 0} products in the catalog`} action={<button className="admin-button" onClick={() => formOpen ? closeForm() : setFormOpen(true)}>{formOpen ? <X size={15} /> : <Plus size={15} />}{formOpen ? 'Close form' : 'Add a product'}</button>} />{formOpen && <form className="admin-form-grid" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label><label>Collection<select required value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">Choose a collection</option>{categories.map((c) => <option value={c._id} key={c._id}>{c.name}</option>)}</select></label><label>Price (৳)<input required min="0" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label><label>Compare at (৳)<input min="0" type="number" value={form.compareAtPrice} onChange={(e) => setForm({ ...form, compareAtPrice: e.target.value })} /></label><label>Stock<input required min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} /></label><label className="admin-form-wide">Short description<input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} /></label><label className="admin-form-wide">Description<textarea required minLength="10" rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label className="admin-form-wide">Image paths, comma separated<input placeholder="/images/weekender.jpg" value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} /></label><label className="admin-form-wide">Upload product image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={uploadImage} /></label><label>Sizes, comma separated<input placeholder="S, M, L" value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} /></label><label>Colors, comma separated<input placeholder="Sand, Olive" value={form.colors} onChange={(e) => setForm({ ...form, colors: e.target.value })} /></label><div className="admin-form-wide flag-row">{[['featured','Featured'],['newArrival','New arrival'],['bestSeller','Best seller']].map(([key,label]) => <label key={key}><input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>{message && <p className="admin-form-wide admin-form-note">{message}</p>}<button className="admin-button admin-form-wide" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Update product' : 'Save product'}</button></form>}<TableState loading={loading} error={error} empty={!products.length && 'No products have been added yet.'}><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Piece</th><th>Collection</th><th>SKU</th><th>Price</th><th>Stock</th><th>Flags</th><th>Actions</th></tr></thead><tbody>{products.map((product) => { const isActive = activeOverrides[product._id] ?? product.isActive; return <tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0] || '/images/weekender.jpg'} alt="" /><span className="admin-product-name"><strong>{product.name}</strong><small className="cell-subline">{isActive ? 'Active' : 'Archived'}</small></span></div></td><td>{product.category?.name}</td><td>{product.sku}</td><td>{money(product.price)}</td><td><b className={product.stock <= 5 ? 'stock-critical' : ''}>{product.stock}</b></td><td>{product.featured ? 'Featured' : product.newArrival ? 'New' : '—'}</td><td><CatalogActions item={product} isActive={isActive} disabled={savingProductId === product._id || deletingProductId === product._id} onEdit={startEdit} onVisibilityChange={setProductVisibility} onDelete={setDeleteTarget} /></td></tr>; })}</tbody></table></div></TableState><DeleteConfirmationModal item={deleteTarget} itemType="product" busy={Boolean(deletingProductId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} /></section>;
+  return <section className="admin-card"><CardHead title="Your collection" hint={`${data?.pagination?.total || 0} products in the catalog`} action={<button className="admin-button" onClick={() => formOpen ? closeForm() : setFormOpen(true)}>{formOpen ? <X size={15} /> : <Plus size={15} />}{formOpen ? 'Close form' : 'Add a product'}</button>} />{formOpen && <form className="admin-form-grid" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label><label>Collection<select required value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">Choose a collection</option>{categories.map((c) => <option value={c._id} key={c._id}>{c.name}</option>)}</select></label><label>Price (৳)<input required min="0" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label><label>Compare at (৳)<input min="0" type="number" value={form.compareAtPrice} onChange={(e) => setForm({ ...form, compareAtPrice: e.target.value })} /></label><label>Stock<input required min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} /></label><label className="admin-form-wide">Short description<input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} /></label><label className="admin-form-wide">Description<textarea required minLength="10" rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><div className="admin-form-wide admin-image-field"><span>Product images</span><AdminImageUpload value={form.images} onChange={(update) => setForm((current) => ({ ...current, images: typeof update === 'function' ? update(current.images) : update }))} folder="products" onBusyChange={setImagesBusy} /></div><label>Sizes, comma separated<input placeholder="S, M, L" value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} /></label><label>Colors, comma separated<input placeholder="Sand, Olive" value={form.colors} onChange={(e) => setForm({ ...form, colors: e.target.value })} /></label><div className="admin-form-wide flag-row">{[['featured','Featured'],['newArrival','New arrival'],['bestSeller','Best seller']].map(([key,label]) => <label key={key}><input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>{message && <p className="admin-form-wide admin-form-note">{message}</p>}<button className="admin-button admin-form-wide" disabled={busy || imagesBusy}>{busy ? 'Saving…' : imagesBusy ? 'Uploading images…' : editingId ? 'Update product' : 'Save product'}</button></form>}<TableState loading={loading} error={error} empty={!products.length && 'No products have been added yet.'}><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Piece</th><th>Collection</th><th>SKU</th><th>Price</th><th>Stock</th><th>Flags</th><th>Actions</th></tr></thead><tbody>{products.map((product) => { const isActive = activeOverrides[product._id] ?? product.isActive; return <tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0] || '/images/weekender.jpg'} alt="" /><span className="admin-product-name"><strong>{product.name}</strong><small className="cell-subline">{isActive ? 'Active' : 'Archived'}</small></span></div></td><td>{product.category?.name}</td><td>{product.sku}</td><td>{money(product.price)}</td><td><b className={product.stock <= 5 ? 'stock-critical' : ''}>{product.stock}</b></td><td>{product.featured ? 'Featured' : product.newArrival ? 'New' : '—'}</td><td><CatalogActions item={product} isActive={isActive} disabled={savingProductId === product._id || deletingProductId === product._id} onEdit={startEdit} onVisibilityChange={setProductVisibility} onDelete={setDeleteTarget} /></td></tr>; })}</tbody></table></div></TableState><DeleteConfirmationModal item={deleteTarget} itemType="product" busy={Boolean(deletingProductId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} /></section>;
 }
 
 function Categories() {
-  const { data, loading, error, refresh } = useData('/admin/categories'); const [form, setForm] = useState({ name: '', description: '', image: '' }); const [editingId, setEditingId] = useState(null); const [message, setMessage] = useState('');
-  const { notify, refreshCategories } = useStore(); const [activeOverrides, setActiveOverrides] = useState({}); const [deletedIds, setDeletedIds] = useState(() => new Set()); const [savingCategoryId, setSavingCategoryId] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deletingCategoryId, setDeletingCategoryId] = useState(null);
-  const submit = async (event) => { event.preventDefault(); try { if (editingId) await unwrap(api.patch(`/admin/categories/${editingId}`, form)); else await unwrap(api.post('/admin/categories', form)); setForm({ name: '', description: '', image: '' }); setEditingId(null); setMessage(editingId ? 'Collection updated.' : 'Collection created.'); await refresh(); } catch (e) { setMessage(errorMessage(e)); } };
+  const { data, loading, error, refresh } = useData('/admin/categories');
+  const { notify, refreshCategories } = useStore();
+  const [form, setForm] = useState({ name: '', description: '', image: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState('');
+  const [imageBusy, setImageBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [activeOverrides, setActiveOverrides] = useState({});
+  const [deletedIds, setDeletedIds] = useState(() => new Set());
+  const [savingCategoryId, setSavingCategoryId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState(null);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (imageBusy) return;
+    if (!form.image) {
+      setMessage('Choose a cover image before saving.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const wasEditing = Boolean(editingId);
+      if (editingId) await unwrap(api.patch('/admin/categories/' + editingId, form));
+      else await unwrap(api.post('/admin/categories', form));
+      setForm({ name: '', description: '', image: '' });
+      setEditingId(null);
+      setMessage(wasEditing ? 'Collection updated.' : 'Collection created.');
+      await refresh();
+      await refreshCategories();
+    } catch (e) {
+      setMessage(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const setCollectionVisibility = async (category, shouldBeActive) => {
-    if (!shouldBeActive && !window.confirm(`Archive ${category.name}?`)) return;
+    if (!shouldBeActive && !window.confirm('Archive ' + category.name + '?')) return;
     setSavingCategoryId(category._id);
     try {
-      if (shouldBeActive) await unwrap(api.patch(`/admin/categories/${category._id}/restore`));
-      else await unwrap(api.delete(`/admin/categories/${category._id}`));
+      if (shouldBeActive) await unwrap(api.patch('/admin/categories/' + category._id + '/restore'));
+      else await unwrap(api.delete('/admin/categories/' + category._id));
       setActiveOverrides((current) => ({ ...current, [category._id]: shouldBeActive }));
       const refreshResults = await Promise.allSettled([refresh(), refreshCategories()]);
       if (refreshResults.some((result) => result.status === 'rejected')) {
-        notify(`${category.name} was ${shouldBeActive ? 'restored' : 'archived'}, but the list could not refresh.`, 'error');
+        notify(category.name + ' was ' + (shouldBeActive ? 'restored' : 'archived') + ', but the list could not refresh.', 'error');
       } else {
         setActiveOverrides((current) => { const next = { ...current }; delete next[category._id]; return next; });
-        notify(`${category.name} ${shouldBeActive ? 'restored and visible' : 'archived'}.`);
+        notify(category.name + ' ' + (shouldBeActive ? 'restored and visible' : 'archived') + '.');
       }
     } catch (e) {
       notify(errorMessage(e), 'error');
@@ -184,25 +214,61 @@ function Categories() {
       setSavingCategoryId(null);
     }
   };
+
   const permanentlyDelete = async () => {
     const category = deleteTarget;
     if (!category) return;
     setDeletingCategoryId(category._id);
     try {
-      await unwrap(api.delete(`/admin/categories/${category._id}/permanent`));
+      await unwrap(api.delete('/admin/categories/' + category._id + '/permanent'));
       setDeleteTarget(null);
       setDeletedIds((current) => new Set(current).add(category._id));
       const refreshResults = await Promise.allSettled([refresh(), refreshCategories()]);
       const refreshed = refreshResults.every((result) => result.status === 'fulfilled');
-      notify(refreshed ? `${category.name} permanently deleted.` : `${category.name} was deleted, but a collection list could not refresh.`, refreshed ? 'success' : 'error');
+      notify(refreshed ? category.name + ' permanently deleted.' : category.name + ' was deleted, but a collection list could not refresh.', refreshed ? 'success' : 'error');
     } catch (e) {
       notify(errorMessage(e), 'error');
     } finally {
       setDeletingCategoryId(null);
     }
   };
+
   const collections = (data?.categories || []).filter((category) => !deletedIds.has(category._id));
-  return <div className="admin-two-column"><section className="admin-card"><CardHead title="Store collections" hint="Each collection has a dedicated storefront page." /><TableState loading={loading} error={error} empty={!collections.length && 'No collections yet.'}><div className="admin-collection-list">{collections.map((category) => { const isActive = activeOverrides[category._id] ?? category.isActive; return <div key={category._id}><img src={category.image || '/images/weekender.jpg'} alt="" /><span><strong>{category.name}</strong><small>/{category.slug} · {isActive ? 'Visible' : 'Archived'}</small></span><CatalogActions item={category} isActive={isActive} disabled={savingCategoryId === category._id || deletingCategoryId === category._id} onEdit={(item) => { setForm({ name: item.name, description: item.description || '', image: item.image || '' }); setEditingId(item._id); }} onVisibilityChange={setCollectionVisibility} onDelete={setDeleteTarget} /><Link to={`/category/${category.slug}`} target="_blank" rel="noreferrer"><ArrowUpRight size={16} /></Link></div>; })}</div></TableState></section><section className="admin-card"><CardHead title={editingId ? 'Edit a collection' : 'Add a collection'} hint="Keep names clear and easy to browse." />{editingId && <button className="table-action" onClick={() => { setEditingId(null); setForm({ name: '', description: '', image: '' }); }}>Cancel edit</button>}<form className="admin-form-stack" onSubmit={submit}><label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>Description<textarea rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Image path<input placeholder="/images/weekender.jpg" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} /></label>{message && <p className="admin-form-note">{message}</p>}<button className="admin-button">{editingId ? 'Update collection' : 'Create collection'}</button></form><DeleteConfirmationModal item={deleteTarget} itemType="collection" busy={Boolean(deletingCategoryId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} /></section></div>;
+  return <div className="admin-two-column">
+    <section className="admin-card">
+      <CardHead title="Store collections" hint="Each collection has a dedicated storefront page." />
+      <TableState loading={loading} error={error} empty={!collections.length && 'No collections yet.'}>
+        <div className="admin-collection-list">{collections.map((category) => {
+          const isActive = activeOverrides[category._id] ?? category.isActive;
+          return <div key={category._id}>
+            <img src={category.image || '/images/weekender.jpg'} alt="" />
+            <span><strong>{category.name}</strong><small>/{category.slug} - {isActive ? 'Visible' : 'Archived'}</small></span>
+            <CatalogActions item={category} isActive={isActive} disabled={savingCategoryId === category._id || deletingCategoryId === category._id} onEdit={(item) => { setForm({ name: item.name, description: item.description || '', image: item.image || '' }); setEditingId(item._id); }} onVisibilityChange={setCollectionVisibility} onDelete={setDeleteTarget} />
+            <Link to={'/category/' + category.slug} target="_blank" rel="noreferrer"><ArrowUpRight size={16} /></Link>
+          </div>;
+        })}</div>
+      </TableState>
+    </section>
+    <section className="admin-card">
+      <CardHead title={editingId ? 'Edit a collection' : 'Add a collection'} hint="Keep names clear and easy to browse." />
+      {editingId && <button type="button" className="table-action" onClick={() => { setEditingId(null); setForm({ name: '', description: '', image: '' }); }}>Cancel edit</button>}
+      <form className="admin-form-stack" onSubmit={submit}>
+        <label>Name<input required minLength="2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+        <label>Description<textarea rows="3" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+        <div className="admin-image-field">
+          <span>Cover image</span>
+          <AdminImageUpload single folder="collections" value={form.image ? [form.image] : []} onChange={(update) => setForm((current) => {
+            const currentImages = current.image ? [current.image] : [];
+            const next = typeof update === 'function' ? update(currentImages) : update;
+            return { ...current, image: next[0] || '' };
+          })} onBusyChange={setImageBusy} />
+        </div>
+        {message && <p className="admin-form-note">{message}</p>}
+        <button className="admin-button" disabled={saving || imageBusy}>{saving ? 'Saving...' : imageBusy ? 'Uploading image...' : editingId ? 'Update collection' : 'Create collection'}</button>
+      </form>
+      <DeleteConfirmationModal item={deleteTarget} itemType="collection" busy={Boolean(deletingCategoryId)} onCancel={() => setDeleteTarget(null)} onConfirm={permanentlyDelete} />
+    </section>
+  </div>;
 }
 
 function Orders() {

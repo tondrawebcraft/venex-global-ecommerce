@@ -495,8 +495,26 @@ img { display: block; max-width: 100%; }
 .admin-delete-dialog p { margin: 0; color: #737b70; font-size: 9px; line-height: 1.6; }
 .admin-delete-dialog p strong { color: #4a5548; }
 .admin-delete-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-top: 20px; }
+.admin-image-uploader { min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.admin-upload-dropzone { min-height: 86px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px 12px; padding: 12px; color: #596652; border: 1px dashed #cbd2c5; background: #f8f9f6; font-size: 8px; }
+.admin-upload-dropzone > span { font-weight: 600; }
+.admin-upload-dropzone small, .admin-image-card small { color: #90968d; font-size: 7px; }
+.admin-upload-dropzone.is-dragging { border-color: #62775b; background: #eff2ed; }
+.admin-upload-choose, .admin-image-replace { position: relative; cursor: pointer; }
+.admin-image-file-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.admin-image-file-input:disabled { cursor: wait; }
+.admin-cover-preview { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid #e9ebe5; background: #fff; }
+.admin-cover-preview img { width: 66px; height: 66px; object-fit: cover; background: #eeeee7; }
+.admin-cover-preview > div { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: #737b70; font-size: 8px; }
+.admin-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 9px; }
+.admin-image-card { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 7px; border: 1px solid #e9ebe5; background: #fff; }
+.admin-image-card > img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #eeeee7; }
+.admin-image-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 9px; }
+.admin-upload-message { color: #69805f; font-size: 8px; }
+.admin-upload-message.is-error { color: #a45e50; }
 .admin-form-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; padding: 16px; border: 1px solid #e9ebe5; background: #f8f9f6; }
 .admin-form-grid > label, .admin-form-stack > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: #727a6f; font-size: 8px; font-weight: 600; }
+.admin-image-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: #727a6f; font-size: 8px; font-weight: 600; }
 .admin-form-grid input, .admin-form-grid textarea, .admin-form-grid select, .admin-form-stack input, .admin-form-stack textarea, .admin-form-stack select { min-width: 0; width: 100%; min-height: 35px; padding: 7px 9px; color: #384337; border: 1px solid #dfe3db; outline: 0; background: white; font-size: 9px; }
 .admin-form-grid textarea, .admin-form-stack textarea { resize: vertical; }
 .admin-form-grid input:focus, .admin-form-stack input:focus, .admin-form-stack textarea:focus, .admin-form-stack select:focus { border-color: #82927a; }
